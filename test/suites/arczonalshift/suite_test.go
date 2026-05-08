@@ -20,14 +20,15 @@ import (
 	"testing"
 
 	arczonalshiftservice "github.com/aws/aws-sdk-go-v2/service/arczonalshift"
-	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
-	"github.com/aws/karpenter-provider-aws/pkg/operator/options"
-	"github.com/aws/karpenter-provider-aws/pkg/test"
-	environmentaws "github.com/aws/karpenter-provider-aws/test/pkg/environment/aws"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/samber/lo"
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+
+	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
+	"github.com/aws/karpenter-provider-aws/pkg/operator/options"
+	"github.com/aws/karpenter-provider-aws/pkg/test"
+	environmentaws "github.com/aws/karpenter-provider-aws/test/pkg/environment/aws"
 )
 
 var env *environmentaws.Environment

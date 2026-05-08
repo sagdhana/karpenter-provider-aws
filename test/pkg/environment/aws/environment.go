@@ -21,9 +21,10 @@ import (
 	"testing"
 
 	servicearczonalshift "github.com/aws/aws-sdk-go-v2/service/arczonalshift"
-	"github.com/aws/karpenter-provider-aws/pkg/providers/arczonalshift"
 	"k8s.io/utils/clock"
 	coretest "sigs.k8s.io/karpenter/pkg/test"
+
+	"github.com/aws/karpenter-provider-aws/pkg/providers/arczonalshift"
 
 	"github.com/aws/amazon-vpc-resource-controller-k8s/apis/vpcresources/v1beta1"
 	"github.com/aws/aws-sdk-go-v2/aws"

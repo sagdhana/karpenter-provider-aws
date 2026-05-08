@@ -524,7 +524,7 @@ var _ = DescribeTableSubtree("Scheduling", Ordered, ContinueOnFailure, func(minV
 			})
 			Expect(err).To(BeNil())
 			env.EventuallyExpectClusterToNotHaveZonalShift(zoneid)
-			// Expecting 3 healthy nodes and pods now that the shift has been cancelled
+			// Expecting 3 healthy nodes and pods now that the shift has been canceled
 			env.EventuallyExpectHealthyPodCount(labels.SelectorFromSet(podLabels), 3)
 			env.EventuallyExpectNodeCount("==", 3)
 		})
