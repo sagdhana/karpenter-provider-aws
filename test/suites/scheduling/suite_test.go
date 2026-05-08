@@ -485,7 +485,7 @@ var _ = DescribeTableSubtree("Scheduling", Ordered, ContinueOnFailure, func(minV
 			subnetInfo := lo.UniqBy(env.GetSubnetInfo(map[string]string{"karpenter.sh/discovery": env.ClusterName}), func(s environmentaws.SubnetInfo) string {
 				return s.Zone
 			})
-			zoneid := subnetInfo[rand.Intn(len(subnetInfo))].ZoneID
+			zoneid := subnetInfo[rand.Intn(len(subnetInfo))].ZoneID //nolint:gosec
 			startzonalshiftresponse, err := env.ARCZONALSHIFTAPI.StartZonalShift(env.Context, &arczonalshiftservice.StartZonalShiftInput{
 				ResourceIdentifier: lo.ToPtr(clusterArn),
 				AwayFrom:           lo.ToPtr(zoneid),

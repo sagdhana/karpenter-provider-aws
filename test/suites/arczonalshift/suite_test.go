@@ -66,8 +66,7 @@ var _ = Describe("Zonal Shift", func() {
 		subnetInfo = lo.UniqBy(env.GetSubnetInfo(map[string]string{"karpenter.sh/discovery": env.ClusterName}), func(s environmentaws.SubnetInfo) string {
 			return s.Zone
 		})
-		zoneid = subnetInfo[rand.Intn(len(subnetInfo))].ZoneID
-
+		zoneid = subnetInfo[rand.Intn(len(subnetInfo))].ZoneID //nolint:gosec
 	})
 	It("Resource should be registered", func() {
 		By("making a successful GetManagedResource API call")
