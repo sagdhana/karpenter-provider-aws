@@ -517,19 +517,15 @@ var _ = DescribeTableSubtree("Scheduling", Ordered, ContinueOnFailure, func(minV
 
 			env.ExpectCreated(nodeClass, nodePool, deployment)
 			env.EventuallyExpectHealthyPodCount(labels.SelectorFromSet(podLabels), 2)
-			// Karpenter will launch three nodes, however if all three nodes don't get register with the cluster at the same time, two pods will be placed on one node.
-			// This can result in a case where all 3 pods are healthy, while there are only two created nodes.
-			// In that case, we still expect to eventually have three nodes.
+			// Expecting only 2 healthy nodes because we shifted a zone away
 			env.EventuallyExpectNodeCount("==", 2)
 			_, err = env.ARCZONALSHIFTAPI.CancelZonalShift(env.Context, &arczonalshiftservice.CancelZonalShiftInput{
 				ZonalShiftId: zonalshiftid,
 			})
 			Expect(err).To(BeNil())
 			env.EventuallyExpectClusterToNotHaveZonalShift(zoneid)
+			// Expecting 3 healthy nodes and pods now that the shift has been cancelled
 			env.EventuallyExpectHealthyPodCount(labels.SelectorFromSet(podLabels), 3)
-			// Karpenter will launch three nodes, however if all three nodes don't get register with the cluster at the same time, two pods will be placed on one node.
-			// This can result in a case where all 3 pods are healthy, while there are only two created nodes.
-			// In that case, we still expect to eventually have three nodes.
 			env.EventuallyExpectNodeCount("==", 3)
 		})
 		It("should provision a node using a NodePool with higher priority", func() {
