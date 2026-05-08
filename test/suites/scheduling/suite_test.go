@@ -481,6 +481,20 @@ var _ = DescribeTableSubtree("Scheduling", Ordered, ContinueOnFailure, func(minV
 			env.EventuallyExpectNodeCount("==", 3)
 		})
 		It("should provision two nodes for a zonal topology spread when a Zonal Shift is active", func() {
+			clusterArn := fmt.Sprintf("arn:aws:eks:%s:%s:cluster/%s", env.Region, env.ExpectAccountID(), env.ClusterName)
+			subnetInfo := lo.UniqBy(env.GetSubnetInfo(map[string]string{"karpenter.sh/discovery": env.ClusterName}), func(s environmentaws.SubnetInfo) string {
+				return s.Zone
+			})
+			zoneid := subnetInfo[rand.Intn(len(subnetInfo))].ZoneID
+			startzonalshiftresponse, err := env.ARCZONALSHIFTAPI.StartZonalShift(env.Context, &arczonalshiftservice.StartZonalShiftInput{
+				ResourceIdentifier: lo.ToPtr(clusterArn),
+				AwayFrom:           lo.ToPtr(zoneid),
+				ExpiresIn:          lo.ToPtr("1h"),
+				Comment:            lo.ToPtr("karpenter e2e test"),
+			})
+			zonalshiftid := startzonalshiftresponse.ZonalShiftId
+			Expect(err).To(BeNil())
+			env.EventuallyExpectClusterToZonalShift(zoneid)
 			// one pod per zone
 			podLabels := map[string]string{"test": "zonal-spread-with-shift"}
 			deployment := test.Deployment(test.DeploymentOptions{
@@ -502,20 +516,6 @@ var _ = DescribeTableSubtree("Scheduling", Ordered, ContinueOnFailure, func(minV
 			})
 
 			env.ExpectCreated(nodeClass, nodePool, deployment)
-			clusterArn := fmt.Sprintf("arn:aws:eks:%s:%s:cluster/%s", env.Region, env.ExpectAccountID(), env.ClusterName)
-			subnetInfo := lo.UniqBy(env.GetSubnetInfo(map[string]string{"karpenter.sh/discovery": env.ClusterName}), func(s environmentaws.SubnetInfo) string {
-				return s.Zone
-			})
-			zoneid := subnetInfo[rand.Intn(len(subnetInfo))].ZoneID
-			startzonalshiftresponse, err := env.ARCZONALSHIFTAPI.StartZonalShift(env.Context, &arczonalshiftservice.StartZonalShiftInput{
-				ResourceIdentifier: lo.ToPtr(clusterArn),
-				AwayFrom:           lo.ToPtr(zoneid),
-				ExpiresIn:          lo.ToPtr("1h"),
-				Comment:            lo.ToPtr("karpenter e2e test"),
-			})
-			zonalshiftid := startzonalshiftresponse.ZonalShiftId
-			Expect(err).To(BeNil())
-			env.EventuallyExpectClusterToZonalShift(zoneid)
 			env.EventuallyExpectHealthyPodCount(labels.SelectorFromSet(podLabels), 2)
 			// Karpenter will launch three nodes, however if all three nodes don't get register with the cluster at the same time, two pods will be placed on one node.
 			// This can result in a case where all 3 pods are healthy, while there are only two created nodes.
