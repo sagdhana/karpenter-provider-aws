@@ -63,14 +63,13 @@ type Options struct {
 	AMISelectorTerms    []v1.AMISelectorTerm `hash:"ignore"` // For Bottlerocket version resolution
 	AMIs                []v1.AMI             `hash:"ignore"` // Resolved AMIs for version extraction
 	// Level-triggered fields that may change out of sync.
-	SecurityGroups            []v1.SecurityGroup
-	Tags                      map[string]string
-	Labels                    map[string]string `hash:"ignore"`
-	KubeDNSIP                 net.IP
-	AssociatePublicIPAddress  *bool
-	IPPrefixCount             *int32
-	NodeClassName             string
-	ResolvedNetworkInterfaces []*ResolvedNetworkInterface `hash:"ignore"`
+	SecurityGroups           []v1.SecurityGroup
+	Tags                     map[string]string
+	Labels                   map[string]string `hash:"ignore"`
+	KubeDNSIP                net.IP
+	AssociatePublicIPAddress *bool
+	IPPrefixCount            *int32
+	NodeClassName            string
 }
 
 // LaunchTemplate holds the dynamically generated launch template parameters
@@ -83,7 +82,7 @@ type LaunchTemplate struct {
 	InstanceTypes                    []*cloudprovider.InstanceType `hash:"ignore"`
 	DetailedMonitoring               bool
 	EFACount                         int
-	NetworkInterfaces                []*ResolvedNetworkInterface
+	NetworkInterfaces                []*v1.NetworkInterface
 	CapacityType                     string
 	CapacityReservationID            string
 	CapacityReservationType          v1.CapacityReservationType
@@ -91,9 +90,6 @@ type LaunchTemplate struct {
 	Tenancy                          string
 	PlacementGroupID                 string
 	PlacementGroupPartition          int32
-	// Zone constrains fleet overrides to a single AZ when set.
-	Zone               string `hash:"ignore"`
-	ConnectionTracking *v1.ConnectionTracking
 }
 
 // AMIFamily can be implemented to override the default logic for generating dynamic launch template parameters
@@ -326,7 +322,7 @@ func (r DefaultResolver) resolveLaunchTemplates(
 			AMIID:                            amiID,
 			InstanceTypes:                    instanceTypes,
 			EFACount:                         efaCount,
-			NetworkInterfaces:                ResolveNetworkInterfaces(nodeClass.Spec.NetworkInterfaces),
+			NetworkInterfaces:                nodeClass.Spec.NetworkInterfaces,
 			CapacityType:                     capacityType,
 			CapacityReservationID:            id,
 			CapacityReservationType:          capacityReservationType,
@@ -334,7 +330,6 @@ func (r DefaultResolver) resolveLaunchTemplates(
 			Tenancy:                          tenancyType,
 			PlacementGroupID:                 placementGroupID,
 			PlacementGroupPartition:          placementGroupPartition,
-			ConnectionTracking:               nodeClass.Spec.ConnectionTracking,
 		}
 		if len(resolved.BlockDeviceMappings) == 0 {
 			resolved.BlockDeviceMappings = amiFamily.DefaultBlockDeviceMappings()

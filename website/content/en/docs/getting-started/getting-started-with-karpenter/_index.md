@@ -48,7 +48,7 @@ After setting up the tools, set the Karpenter and Kubernetes version:
 
 ```bash
 export KARPENTER_NAMESPACE="kube-system"
-export KARPENTER_VERSION="1.12.1"
+export KARPENTER_VERSION="1.12.0"
 export K8S_VERSION="1.35"
 ```
 
@@ -115,13 +115,13 @@ See [Enabling Windows support](https://docs.aws.amazon.com/eks/latest/userguide/
 As the OCI Helm chart is signed by [Cosign](https://github.com/sigstore/cosign) as part of the release process you can verify the chart before installing it by running the following command.
 
 ```bash
-cosign verify public.ecr.aws/karpenter/karpenter:1.12.1 \
+cosign verify public.ecr.aws/karpenter/karpenter:1.12.0 \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   --certificate-identity-regexp='https://github\.com/aws/karpenter-provider-aws/\.github/workflows/release\.yaml@.+' \
   --certificate-github-workflow-repository=aws/karpenter-provider-aws \
   --certificate-github-workflow-name=Release \
-  --certificate-github-workflow-ref=refs/tags/v1.12.1 \
-  --annotations version=1.12.1
+  --certificate-github-workflow-ref=refs/tags/v1.12.0 \
+  --annotations version=1.12.0
 ```
 
 {{% alert title="DNS Policy Notice" color="warning" %}}
@@ -232,8 +232,6 @@ If you are upgrading an existing Karpenter installation to v1.12.0+ and want to 
       }   
     }
     ```
-
-    Karpenter also requires permission for `eks:DescribeCluster` when Zonal Shift is enabled. The standard onboarding's `KarpenterControllerEKSIntegrationPolicy` already grants this; if you manage IAM manually, make sure the controller role has `eks:DescribeCluster` on the cluster resource.
 
 2. **Enable Zonal Shift on the EKS cluster** if not already enabled:
 

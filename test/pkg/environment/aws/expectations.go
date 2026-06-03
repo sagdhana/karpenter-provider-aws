@@ -406,62 +406,6 @@ func (env *Environment) GetAMIBySSMPath(ssmPath string) string {
 	return *parameter.Parameter.Value
 }
 
-// getPinnedAMIPath returns any one valid pinned AMI path which is a child of the SSM path supplied
-func (env *Environment) getPinnedAMIPath(ssmPath string) string {
-	GinkgoHelper()
-
-	paginator := ssm.NewGetParametersByPathPaginator(env.SSMAPI, &ssm.GetParametersByPathInput{
-		Path:      aws.String(ssmPath),
-		Recursive: aws.Bool(true),
-	})
-	var amiPath string
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(env.Context)
-		Expect(err).ToNot(HaveOccurred())
-		for _, param := range page.Parameters {
-			name := aws.ToString(param.Name)
-			// Get only the image_id path so we know what suffix to trim later
-			if !strings.Contains(name, "recommended") && !strings.Contains(name, "latest") && strings.HasSuffix(name, "/image_id") {
-				amiPath = name
-				break
-			}
-		}
-		if amiPath != "" {
-			break
-		}
-	}
-	Expect(amiPath).ToNot(BeEmpty(), "no pinned AMI version found under SSM path: %s", ssmPath)
-	amiPath = strings.TrimSuffix(amiPath, "/image_id")
-	return amiPath
-}
-
-// GetPinnedAMIVersion returns any one valid pinned AMI version for the AMI family supplied
-func (env *Environment) GetPinnedAMIVersion(amiFamily string) string {
-	GinkgoHelper()
-
-	k8sVersion := env.K8sVersion()
-	var ssmPath string
-	switch amiFamily {
-	case "al2023":
-		ssmPath = fmt.Sprintf("/aws/service/eks/optimized-ami/%s/amazon-linux-2023/x86_64/standard", k8sVersion)
-	case "al2":
-		ssmPath = fmt.Sprintf("/aws/service/eks/optimized-ami/%s/amazon-linux-2", k8sVersion)
-	case "bottlerocket":
-		ssmPath = fmt.Sprintf("/aws/service/bottlerocket/aws-k8s-%s/x86_64", k8sVersion)
-	}
-	amiPath := env.getPinnedAMIPath(ssmPath)
-	pathParts := strings.Split(amiPath, "/")
-	var amiVersion string
-	if strings.Contains(ssmPath, "bottlerocket") {
-		amiVersion = pathParts[len(pathParts)-1]
-	} else {
-		lastPathPart := pathParts[len(pathParts)-1]
-		parts := strings.Split(lastPathPart, "-")
-		amiVersion = parts[len(parts)-1]
-	}
-	return amiVersion
-}
-
 func (env *Environment) GetDeprecatedAMI(amiID string, amifamily string) string {
 	out, err := env.EC2API.DescribeImages(env.Context, &ec2.DescribeImagesInput{
 		Filters: []ec2types.Filter{
@@ -825,15 +769,6 @@ func (env *Environment) ExpectNodeRoleDeleted(roleName string) {
 	Expect(awserrors.IgnoreNotFound(err)).ToNot(HaveOccurred())
 }
 
-func (env *Environment) ExpectSecurityGroupDeleted(groupID *string) {
-	GinkgoHelper()
-	By("deleting security group created for test")
-	_, err := env.EC2API.DeleteSecurityGroup(env.Context, &ec2.DeleteSecurityGroupInput{
-		GroupId: groupID,
-	})
-	Expect(awserrors.IgnoreNotFound(err)).ToNot(HaveOccurred())
-}
-
 func (env *Environment) ExpectEFADevicePluginCreated() {
 	GinkgoHelper()
 	env.ExpectCreated(&appsv1.DaemonSet{
@@ -947,8 +882,6 @@ func (env *Environment) EventuallyExpectClusterToZonalShift(zoneId string) {
 	GinkgoHelper()
 	By(fmt.Sprintf("expecting zonal shift on cluster %s away from %s", env.ClusterName, zoneId))
 	Eventually(func(g Gomega) {
-		err := env.ZonalShiftProvider.UpdateZonalShifts(env.Context) // this line needs to go. The controller should do this already.
-		g.Expect(err).ToNot(HaveOccurred())
 		shifted := env.ZonalShiftProvider.IsZonalShifted(env.Context, zoneId)
 		g.Expect(shifted).To(BeTrue())
 	}).WithTimeout(60 * time.Second).WithPolling(10 * time.Second).Should(Succeed())
@@ -958,8 +891,6 @@ func (env *Environment) EventuallyExpectClusterToNotHaveZonalShift(zoneId string
 	GinkgoHelper()
 	By(fmt.Sprintf("expecting no zonal shift on cluster %s away from %s", env.ClusterName, zoneId))
 	Eventually(func(g Gomega) {
-		err := env.ZonalShiftProvider.UpdateZonalShifts(env.Context) // this line needs to go. The controller should do this already.
-		g.Expect(err).ToNot(HaveOccurred())
 		shifted := env.ZonalShiftProvider.IsZonalShifted(env.Context, zoneId)
 		g.Expect(shifted).To(BeFalse())
 	}).WithTimeout(60 * time.Second).WithPolling(10 * time.Second).Should(Succeed())

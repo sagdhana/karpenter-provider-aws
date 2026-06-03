@@ -82,6 +82,7 @@ type Environment struct {
 	LaunchTemplateCache                  *cache.Cache
 	SubnetCache                          *cache.Cache
 	AvailableIPAdressCache               *cache.Cache
+	AssociatePublicIPAddressCache        *cache.Cache
 	SecurityGroupCache                   *cache.Cache
 	InstanceProfileCache                 *cache.Cache
 	RoleCache                            *cache.Cache
@@ -137,6 +138,7 @@ func NewEnvironment(ctx context.Context, env *coretest.Environment) *Environment
 	launchTemplateCache := cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval)
 	subnetCache := cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval)
 	availableIPAdressCache := cache.New(awscache.AvailableIPAddressTTL, awscache.DefaultCleanupInterval)
+	associatePublicIPAddressCache := cache.New(awscache.AssociatePublicIPAddressTTL, awscache.DefaultCleanupInterval)
 	securityGroupCache := cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval)
 	instanceProfileCache := cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval)
 	roleCache := cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval)
@@ -153,7 +155,7 @@ func NewEnvironment(ctx context.Context, env *coretest.Environment) *Environment
 
 	// Providers
 	pricingProvider := pricing.NewDefaultProvider(fakePricingAPI, ec2api, fake.DefaultRegion, false)
-	subnetProvider := subnet.NewDefaultProvider(ec2api, subnetCache, availableIPAdressCache)
+	subnetProvider := subnet.NewDefaultProvider(ec2api, subnetCache, availableIPAdressCache, associatePublicIPAddressCache)
 	securityGroupProvider := securitygroup.NewDefaultProvider(ec2api, securityGroupCache)
 	versionProvider := version.NewDefaultProvider(env.KubernetesInterface, eksapi)
 	// Ensure we're able to hydrate the version before starting any reliant controllers.
@@ -227,6 +229,7 @@ func NewEnvironment(ctx context.Context, env *coretest.Environment) *Environment
 		LaunchTemplateCache:                  launchTemplateCache,
 		SubnetCache:                          subnetCache,
 		AvailableIPAdressCache:               availableIPAdressCache,
+		AssociatePublicIPAddressCache:        associatePublicIPAddressCache,
 		SecurityGroupCache:                   securityGroupCache,
 		InstanceProfileCache:                 instanceProfileCache,
 		RoleCache:                            roleCache,
@@ -278,6 +281,7 @@ func (env *Environment) Reset() {
 	env.OfferingCache.Flush()
 	env.LaunchTemplateCache.Flush()
 	env.SubnetCache.Flush()
+	env.AssociatePublicIPAddressCache.Flush()
 	env.AvailableIPAdressCache.Flush()
 	env.SecurityGroupCache.Flush()
 	env.InstanceProfileCache.Flush()

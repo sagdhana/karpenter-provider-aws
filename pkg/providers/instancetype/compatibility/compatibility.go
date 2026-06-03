@@ -21,14 +21,12 @@ import (
 	"github.com/samber/lo"
 
 	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
-	"github.com/aws/karpenter-provider-aws/pkg/providers/amifamily"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/placementgroup"
 )
 
 type NodeClass interface {
 	NetworkInterfaces() []*v1.NetworkInterface
 	AMIFamily() string
-	ConnectionTracking() *v1.ConnectionTracking
 }
 
 type CompatibleCheck interface {
@@ -36,12 +34,10 @@ type CompatibleCheck interface {
 }
 
 func IsCompatibleWithNodeClass(info ec2types.InstanceTypeInfo, nodeClass NodeClass, pg *placementgroup.PlacementGroup) bool {
-	networkInterfaces := amifamily.ResolveNetworkInterfaces(nodeClass.NetworkInterfaces())
 	for _, check := range []CompatibleCheck{
-		networkInterfaceCompatibility(networkInterfaces),
+		networkInterfaceCompatibility(nodeClass.NetworkInterfaces()),
 		amiFamilyCompatibility(nodeClass.AMIFamily()),
 		placementGroupCompatibility(pg),
-		connectionTrackingCompatibility(nodeClass.ConnectionTracking()),
 	} {
 		if !check.compatibleCheck(info) {
 			return false
@@ -69,10 +65,10 @@ func (c amiFamilyCheck) compatibleCheck(info ec2types.InstanceTypeInfo) bool {
 }
 
 type networkInterfaceCheck struct {
-	networkInterfaces []*amifamily.ResolvedNetworkInterface
+	networkInterfaces []*v1.NetworkInterface
 }
 
-func networkInterfaceCompatibility(networkInterfaces []*amifamily.ResolvedNetworkInterface) CompatibleCheck {
+func networkInterfaceCompatibility(networkInterfaces []*v1.NetworkInterface) CompatibleCheck {
 	return &networkInterfaceCheck{
 		networkInterfaces: networkInterfaces,
 	}
@@ -105,22 +101,9 @@ func (c networkInterfaceCheck) compatibleCheck(info ec2types.InstanceTypeInfo) b
 		if !found || lo.FromPtr(networkCard.MaximumNetworkInterfaces) <= networkInterface.DeviceIndex {
 			return false
 		}
-		// (4) the configured secondary IP count exceeds instance type capacity.
-		// Only one of SecondaryIPPrefixCount and SecondaryIPCount can be configured.
-		secondaryIPsConfigured := max(lo.FromPtrOr(networkInterface.SecondaryIPPrefixCount, int32(0)), lo.FromPtrOr(networkInterface.SecondaryIPCount, int32(0)))
-		if secondaryIPsConfigured > 0 {
-			totalAddressesConsumed := secondaryIPsConfigured
-			// For the primary ENI, account for the node IP which consumes one address slot
-			if networkInterface.NetworkCardIndex == 0 && networkInterface.DeviceIndex == 0 {
-				totalAddressesConsumed++
-			}
-			if totalAddressesConsumed > lo.FromPtr(info.NetworkInfo.Ipv4AddressesPerInterface) {
-				return false
-			}
-		}
 	}
-	// (5) the configured number of EFA-only interfaces is greater than what the instance type offers
-	numEfas := lo.CountBy(c.networkInterfaces, func(nic *amifamily.ResolvedNetworkInterface) bool {
+	// (4) the configured number of EFA-only interfaces is greater than what the instance type offers
+	numEfas := lo.CountBy(c.networkInterfaces, func(nic *v1.NetworkInterface) bool {
 		return nic.InterfaceType == v1.InterfaceTypeEFAOnly
 	})
 	if numEfas > 0 {
@@ -156,21 +139,4 @@ func PlacementGroupStrategyToEC2(strategy placementgroup.Strategy) ec2types.Plac
 		return string(crt) == string(strategy)
 	})
 	return resolvedType
-}
-
-type connectionTrackingCheck struct {
-	hasConnectionTracking bool
-}
-
-func connectionTrackingCompatibility(ct *v1.ConnectionTracking) CompatibleCheck {
-	return &connectionTrackingCheck{
-		hasConnectionTracking: ct != nil,
-	}
-}
-
-func (c connectionTrackingCheck) compatibleCheck(info ec2types.InstanceTypeInfo) bool {
-	if !c.hasConnectionTracking {
-		return true
-	}
-	return info.Hypervisor == "nitro"
 }

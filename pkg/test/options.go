@@ -16,7 +16,6 @@ package test
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/imdario/mergo"
 	"github.com/samber/lo"
@@ -34,9 +33,6 @@ type OptionsFields struct {
 	InterruptionQueue       *string
 	ReservedENIs            *int
 	DisableDryRun           *bool
-	EnableZonalShift        *bool
-	AMIRefreshInterval      *time.Duration
-	SubnetRefreshInterval   *time.Duration
 	EnableZonalShift        *bool
 }
 
@@ -57,9 +53,6 @@ func Options(overrides ...OptionsFields) *options.Options {
 		InterruptionQueue:       lo.FromPtrOr(opts.InterruptionQueue, ""),
 		ReservedENIs:            lo.FromPtrOr(opts.ReservedENIs, 0),
 		DisableDryRun:           lo.FromPtrOr(opts.DisableDryRun, false),
-		EnableZonalShift:        lo.FromPtrOr(opts.EnableZonalShift, false),
-		AMIRefreshInterval:      lo.FromPtrOr(opts.AMIRefreshInterval, time.Minute),
-		SubnetRefreshInterval:   lo.FromPtrOr(opts.SubnetRefreshInterval, time.Minute),
 		EnableZonalShift:        lo.FromPtrOr(opts.EnableZonalShift, false),
 	}
 }

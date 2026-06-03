@@ -65,7 +65,6 @@ type NodeClass interface {
 	KubeletConfiguration() *v1.KubeletConfiguration
 	PlacementGroupSelector() *v1.PlacementGroupSelector
 	ZoneInfo() []v1.ZoneInfo
-	ConnectionTracking() *v1.ConnectionTracking
 }
 
 type Provider interface {

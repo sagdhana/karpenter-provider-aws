@@ -52,7 +52,6 @@ type NodeClass interface {
 	NetworkInterfaces() []*v1.NetworkInterface
 	AMIFamily() string
 	PlacementGroupSelector() *v1.PlacementGroupSelector
-	ConnectionTracking() *v1.ConnectionTracking
 }
 
 type DefaultProvider struct {
@@ -96,8 +95,6 @@ func (p *DefaultProvider) InjectOfferings(
 		pg, _ = p.placementGroupProvider.Get(ctx, nodeClass)
 	}
 	var its []*cloudprovider.InstanceType
-	shiftedZones := p.zonalshiftProvider.ShiftedZones()
-
 	for _, it := range instanceTypes {
 		info := instanceTypeInfo[ec2types.InstanceType(it.Name)]
 		offerings := p.createOfferings(
@@ -107,7 +104,6 @@ func (p *DefaultProvider) InjectOfferings(
 			nodeClass,
 			pg,
 			allZones,
-			shiftedZones,
 		)
 		// For partition placement groups, expand each offering into N offerings (one per partition)
 		offerings = p.expandPartitionOfferings(offerings, pg)
@@ -148,7 +144,6 @@ func (p *DefaultProvider) createOfferings(
 	nodeClass NodeClass,
 	pg *placementgroup.PlacementGroup,
 	allZones sets.Set[string],
-	shiftedZones sets.Set[string],
 ) cloudprovider.Offerings {
 	var offerings []*cloudprovider.Offering
 	itZones := sets.New(it.Requirements.Get(corev1.LabelTopologyZone).Values()...)
@@ -163,7 +158,7 @@ func (p *DefaultProvider) createOfferings(
 		lastSeqNum = 0
 	}
 	seqNum := p.unavailableOfferings.SeqNum(ec2types.InstanceType(it.Name))
-	if ofs, ok := p.cache.Get(p.cacheKeyFromInstanceType(it, nodeClass, shiftedZones)); ok && lastSeqNum == seqNum {
+	if ofs, ok := p.cache.Get(p.cacheKeyFromInstanceType(it, nodeClass)); ok && lastSeqNum == seqNum {
 		offerings = append(offerings, ofs.([]*cloudprovider.Offering)...)
 	} else {
 		var pgOpts []awscache.UnavailableOfferingsOption
@@ -219,7 +214,7 @@ func (p *DefaultProvider) createOfferings(
 				cachedOfferings = append(cachedOfferings, offering)
 			}
 		}
-		p.cache.SetDefault(p.cacheKeyFromInstanceType(it, nodeClass, shiftedZones), cachedOfferings)
+		p.cache.SetDefault(p.cacheKeyFromInstanceType(it, nodeClass), cachedOfferings)
 		p.lastUnavailableOfferingsSeqNum.Store(ec2types.InstanceType(it.Name), seqNum)
 		offerings = append(offerings, cachedOfferings...)
 	}
@@ -293,7 +288,7 @@ func (p *DefaultProvider) expandPartitionOfferings(offerings cloudprovider.Offer
 	return expanded
 }
 
-func (p *DefaultProvider) cacheKeyFromInstanceType(it *cloudprovider.InstanceType, nodeClass NodeClass, shiftedZones sets.Set[string]) string {
+func (p *DefaultProvider) cacheKeyFromInstanceType(it *cloudprovider.InstanceType, nodeClass NodeClass) string {
 	zonesHash, _ := hashstructure.Hash(
 		it.Requirements.Get(corev1.LabelTopologyZone).Values(),
 		hashstructure.FormatV2,
@@ -317,23 +312,13 @@ func (p *DefaultProvider) cacheKeyFromInstanceType(it *cloudprovider.InstanceTyp
 		hashstructure.FormatV2,
 		&hashstructure.HashOptions{SlicesAsSets: true},
 	)
-	shiftedZonesHash, _ := hashstructure.Hash(
-		shiftedZones,
-		hashstructure.FormatV2,
-		&hashstructure.HashOptions{SlicesAsSets: true},
-	)
-
-	connectionTrackingHash, _ := hashstructure.Hash(nodeClass.ConnectionTracking() != nil, hashstructure.FormatV2, nil)
-
 	return fmt.Sprintf(
-		"%s-%016x-%016x-%016x-%016x-%016x-%016x-%016x",
+		"%s-%016x-%016x-%016x-%016x-%016x",
 		it.Name,
 		zonesHash,
 		capacityTypesHash,
 		networkInterfaceHash,
 		subnetsHash,
 		placementGroupPartitionsHash,
-		shiftedZonesHash,
-		connectionTrackingHash,
 	)
 }
