@@ -28,6 +28,8 @@ import (
 	"sigs.k8s.io/karpenter/pkg/test/v1alpha1"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/arczonalshift"
+	arczonalshifttypes "github.com/aws/aws-sdk-go-v2/service/arczonalshift/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/awslabs/operatorpkg/object"
@@ -777,7 +779,7 @@ var _ = Describe("InstanceTypeProvider", func() {
 		ExpectProvisioned(ctx, env.Client, cluster, cloudProvider, prov, pods...)
 		for _, pod := range pods {
 			node := ExpectScheduled(ctx, env.Client, pod)
-			Expect(node.Labels).To(HaveKeyWithValue(corev1.LabelInstanceTypeStable, "p3.8xlarge"))
+			Expect(node.Labels).To(HaveKeyWithValue(corev1.LabelInstanceTypeStable, "g5.12xlarge"))
 			nodeNames.Insert(node.Name)
 		}
 		Expect(nodeNames.Len()).To(Equal(2))
@@ -2100,9 +2102,9 @@ var _ = Describe("InstanceTypeProvider", func() {
 			Expect(nodeNames.Len()).To(Equal(2))
 		})
 		It("should launch instances in a different zone on second reconciliation attempt with Insufficient Capacity Error Cache fallback", func() {
-			awsEnv.EC2API.InsufficientCapacityPools.Set([]fake.CapacityPool{{CapacityType: karpv1.CapacityTypeOnDemand, InstanceType: "p3.8xlarge", Zone: "test-zone-1a"}})
+			awsEnv.EC2API.InsufficientCapacityPools.Set([]fake.CapacityPool{{CapacityType: karpv1.CapacityTypeOnDemand, InstanceType: "g5.12xlarge", Zone: "test-zone-1a"}})
 			pod := coretest.UnschedulablePod(coretest.PodOptions{
-				NodeSelector: map[string]string{corev1.LabelInstanceTypeStable: "p3.8xlarge"},
+				NodeSelector: map[string]string{corev1.LabelInstanceTypeStable: "g5.12xlarge"},
 				ResourceRequirements: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{v1.ResourceNVIDIAGPU: resource.MustParse("1")},
 					Limits:   corev1.ResourceList{v1.ResourceNVIDIAGPU: resource.MustParse("1")},
@@ -2117,13 +2119,13 @@ var _ = Describe("InstanceTypeProvider", func() {
 			}}}
 			ExpectApplied(ctx, env.Client, nodePool, nodeClass)
 			ExpectProvisioned(ctx, env.Client, cluster, cloudProvider, prov, pod)
-			// it should've tried to pack them in test-zone-1a on a p3.8xlarge then hit insufficient capacity, the next attempt will try test-zone-1b
+			// it should've tried to pack them in test-zone-1a on a g5.12xlarge then hit insufficient capacity, the next attempt will try test-zone-1b
 			ExpectNotScheduled(ctx, env.Client, pod)
 
 			ExpectProvisioned(ctx, env.Client, cluster, cloudProvider, prov, pod)
 			node := ExpectScheduled(ctx, env.Client, pod)
 			Expect(node.Labels).To(SatisfyAll(
-				HaveKeyWithValue(corev1.LabelInstanceTypeStable, "p3.8xlarge"),
+				HaveKeyWithValue(corev1.LabelInstanceTypeStable, "g5.12xlarge"),
 				HaveKeyWithValue(corev1.LabelTopologyZone, "test-zone-1b")))
 		})
 		It("should launch smaller instances than optimal if larger instance launch results in Insufficient Capacity Error", func() {
@@ -3037,6 +3039,54 @@ var _ = Describe("InstanceTypeProvider", func() {
 			Entry("when the capacity block is active", v1.CapacityReservationStateActive),
 			Entry("when the capacity block is expiring", v1.CapacityReservationStateExpiring),
 		)
+	})
+	It("should mark offerings as unavailable for zones shifted away from", func() {
+		ExpectApplied(ctx, env.Client, nodeClass)
+
+		// before zonal shift, all offerings should be available
+		instanceTypes, err := cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		m5InstanceType, ok := lo.Find(instanceTypes, func(it *corecloudprovider.InstanceType) bool {
+			return it.Name == string(ec2types.InstanceTypeM5Large)
+		})
+		Expect(ok).To(BeTrue())
+		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(6)) // 3 zones x 2 capacity types
+
+		awsEnv.ARCZonalShiftAPI.GetManagedResourceBehavior.Output.Set(&arczonalshift.GetManagedResourceOutput{
+			ZonalShifts: []arczonalshifttypes.ZonalShiftInResource{
+				{
+					AwayFrom:      aws.String("tstz1-1a"),
+					ExpiryTime:    aws.Time(time.Now().Add(time.Hour)),
+					AppliedStatus: arczonalshifttypes.AppliedStatusApplied,
+				},
+			},
+		})
+		Expect(awsEnv.ZonalShiftProvider.UpdateZonalShifts(ctx)).To(Succeed())
+
+		// after zonal shift, 2 offerings should be available
+		instanceTypes, err = cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		m5InstanceType, ok = lo.Find(instanceTypes, func(it *corecloudprovider.InstanceType) bool {
+			return it.Name == string(ec2types.InstanceTypeM5Large)
+		})
+		Expect(ok).To(BeTrue())
+		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(4))
+		for _, offering := range m5InstanceType.Offerings.Available() {
+			Expect(offering.Zone()).ToNot(Equal("test-zone-1a"))
+		}
+
+		// shift back into the zone, all offerings should be available again
+		awsEnv.ARCZonalShiftAPI.GetManagedResourceBehavior.Output.Set(&arczonalshift.GetManagedResourceOutput{
+			ZonalShifts: []arczonalshifttypes.ZonalShiftInResource{},
+		})
+		Expect(awsEnv.ZonalShiftProvider.UpdateZonalShifts(ctx)).To(Succeed())
+		instanceTypes, err = cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		m5InstanceType, ok = lo.Find(instanceTypes, func(it *corecloudprovider.InstanceType) bool {
+			return it.Name == string(ec2types.InstanceTypeM5Large)
+		})
+		Expect(ok).To(BeTrue())
+		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(6))
 	})
 	Context("Instance Type and NodeClass Compatibility", func() {
 		Context("AMI Compatibility", func() {
