@@ -106,6 +106,15 @@ func (c *InstanceStatusController) Reconcile(ctx context.Context) (reconciler.Re
 	errs := make([]error, len(instanceStatuses))
 	workqueue.ParallelizeUntil(ctx, 10, len(instanceStatuses), func(i int) {
 		errs[i] = c.handleHealthStatus(ctx, instanceStatuses[i], currentKeys)
+		msg := instancestatusfailure.Message(instanceStatuses[i])
+		found, err := c.handleMessage(ctx, msg, InstanceStatusDryRun)
+		if err != nil {
+			errs[i] = fmt.Errorf("handling instance status check message, %w", err)
+		}
+		if !found {
+			return
+		}
+		c.recordUnhealthyInstance(ctx, instanceStatuses[i], currentKeys)
 	})
 
 	// Prune entries for instances that are no longer reported as unhealthy,
@@ -160,6 +169,26 @@ func (c *InstanceStatusController) recordUnhealthyInstance(ctx context.Context, 
 			"instanceID", instanceID,
 			"category", string(category))
 		InstanceStatusUnhealthy.Inc(map[string]string{categoryLabel: string(category)})
+func (c *InstanceStatusController) recordUnhealthyInstance(ctx context.Context, status instancestatus.HealthStatus, currentKeys map[unhealthyKey]struct{}) {
+	categories := map[string]bool{}
+	for _, d := range status.Details {
+		categories[string(d.Category)] = true
+	}
+	for cat := range categories {
+		key := unhealthyKey{instanceID: status.InstanceID, category: cat}
+		c.mu.Lock()
+		currentKeys[key] = struct{}{}
+		_, already := c.seen[key]
+		if !already {
+			c.seen[key] = struct{}{}
+		}
+		c.mu.Unlock()
+		if !already {
+			log.FromContext(ctx).Info("detected unhealthy instance owned by cluster",
+				"instance-id", status.InstanceID,
+				"category", cat)
+			InstanceStatusUnhealthy.Inc(map[string]string{categoryLabel: cat})
+		}
 	}
 }
 
